@@ -4,7 +4,8 @@ use btleplug::platform::{Adapter, Manager};
 use futures::stream::StreamExt;
 use serde::Serialize;
 use std::thread::sleep;
-use std::time::Duration;
+// use std::time::Duration;
+use std::time::{Duration, Instant}; // <-- Importação corrigida
 
 #[derive(Serialize)]
 struct Device {
@@ -21,6 +22,7 @@ fn greet(name: &str) -> String {
 // New scan_devices command
 #[tauri::command]
 async fn scan_devices() -> Result<Vec<Device>, String> {
+    println!("Scan command called!"); // <-- Adicionado para debug
     let manager = Manager::new().await.map_err(|e| e.to_string())?;
 
     // Get the first Bluetooth adapter
@@ -59,30 +61,24 @@ async fn get_central(manager: &Manager) -> Adapter {
 
 #[tauri::command]
 async fn scan() -> Result<Vec<Device>, String> {
+    println!("Scan command called!");
+
     let manager = Manager::new().await.map_err(|e| e.to_string())?;
-
-    // Get the first Bluetooth adapter
     let adapters = manager.adapters().await.map_err(|e| e.to_string())?;
-    let central = adapters
-        .into_iter()
-        .nth(0)
-        .ok_or("No Bluetooth adapters found")?;
+    let central = adapters.into_iter().nth(0).ok_or("No Bluetooth adapters found")?;
 
-    // Start scanning for devices
-    central
-        .start_scan(ScanFilter::default())
-        .await
-        .map_err(|e| e.to_string())?;
+    // Iniciar o scan
+    central.start_scan(ScanFilter::default()).await.map_err(|e| e.to_string())?;
+    println!("Scanning started...");
 
-    // Set up to listen for device discovery events
+    let scan_duration = Duration::from_secs(10);
+    let scan_start = Instant::now(); // <-- Correção aplicada aqui
     let mut events = central.events().await.map_err(|e| e.to_string())?;
-
     let mut devices = Vec::new();
 
-    // Listen for events and gather discovered devices
-    while let Some(event) = events.next().await {
-        match event {
-            CentralEvent::DeviceDiscovered(id) => {
+    while scan_start.elapsed() < scan_duration {
+        if let Some(event) = events.next().await {
+            if let CentralEvent::DeviceDiscovered(id) = event {
                 let peripheral = central.peripheral(&id).await.map_err(|e| e.to_string())?;
                 let properties = peripheral.properties().await.map_err(|e| e.to_string())?;
 
@@ -90,15 +86,19 @@ async fn scan() -> Result<Vec<Device>, String> {
                     let name = props.local_name.unwrap_or_else(|| "Unknown".to_string());
                     let address = props.address.to_string();
 
-                    // Add the discovered device to the list
+                    println!("Device found: {} - {}", name, address);
                     devices.push(Device { name, address });
                 }
             }
-            _ => {}
+        } else {
+            // Pequena pausa para evitar consumo excessivo de CPU
+            sleep(Duration::from_millis(100));
         }
     }
 
-    // Return the list of devices
+    println!("Scan completed, {} devices found", devices.len());
+    central.stop_scan().await.map_err(|e| e.to_string())?;
+
     Ok(devices)
 }
 
