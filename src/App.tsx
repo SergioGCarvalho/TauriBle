@@ -11,10 +11,12 @@ function App() {
   async function scanForDevices() {
     setIsScanning(true);
     setError(null);
-
+    console.log("Starting scan...");
+  
     try {
-      // Call the Tauri command to scan for devices
-      const scannedDevices = await invoke<{ name: string; address: string }[]>("scan");
+      const scannedDevices = await invoke<{ name: string; address: string }[]>("scan_devices");
+      console.log("Scan completed. Devices found:", scannedDevices);
+      
       setDevices(scannedDevices);
     } catch (err) {
       console.error("Error scanning devices:", err);
@@ -23,6 +25,7 @@ function App() {
       setIsScanning(false);
     }
   }
+  
 
   return (
     <div>
